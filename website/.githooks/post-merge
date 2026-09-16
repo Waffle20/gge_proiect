@@ -1,0 +1,5 @@
+#!/bin/sh
+touch needsRebuild
+npm i
+npm run build
+rm -f needsRebuild
