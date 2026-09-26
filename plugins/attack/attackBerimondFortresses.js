@@ -18,7 +18,7 @@ const err = require("../../err.json")
 const pluginOptions = botConfig.plugins[require("path").basename(__filename).slice(0, -3)] ?? {}
 
 // --- Compoziția atacului, editabilă direct aici ---
-const UNIT_WODID = 10
+const UNIT_WODID = 10 //2069 - wodid archer lvl10
 const UNIT_AMOUNT = 32
 const TOOL_WODID = 620
 const TOOL_AMOUNT = 30

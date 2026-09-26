@@ -29,8 +29,8 @@ const { botConfig, events, sendXT, waitForResult } = require("../ggeBot.js")
 const pluginOptions = botConfig.plugins[require("path").basename(__filename).slice(0, -3)] ?? {}
 
 // --- Editabil direct aici ---
-const TROOP_WODID = 10
-const MIN_TROOPS = 110 // prag fix, ignora ce e setat pe site
+const TROOP_WODID = 10 // 2069 lvl archer10
+const MIN_TROOPS = 100 // prag fix, ignora ce e setat pe site
 const CHECK_INTERVAL_MS = 30 * 1000 // la cat timp verifica stocul
 const SAFETY_BUFFER = 5 // marja suplimentara, ca sa nu lovim exact capacitatea maxima
 

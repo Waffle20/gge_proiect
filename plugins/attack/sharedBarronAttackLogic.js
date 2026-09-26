@@ -237,20 +237,20 @@ async function barronHit(type, kingdomID, options, maxLevel) {
 
                     if (autoConfigure ? true : options.attackLeft) {
                         wave.L.U.forEach(unitSlot =>
-                            maxTroops -= assignUnit(unitSlot, attackerMeleeTroops.length <= 0 ?
-                                attackerRangeTroops : attackerMeleeTroops, maxTroops))
+                            maxTroops -= assignUnit(unitSlot, attackerRangeTroops.length <= 0 ?
+                                attackerMeleeTroops : attackerRangeTroops, maxTroops))
                     }
                     if (options.attackRight) {
                         maxTroops = maxTroopFlank
                         wave.R.U.forEach(unitSlot =>
-                            maxTroops -= assignUnit(unitSlot, attackerMeleeTroops.length <= 0 ?
-                                attackerRangeTroops : attackerMeleeTroops, maxTroops))
+                            maxTroops -= assignUnit(unitSlot, attackerRangeTroops.length <= 0 ?
+                                attackerMeleeTroops : attackerRangeTroops, maxTroops))
                     }
                     if (options.attackMiddle) {
                         maxTroops = maxTroopFront
                         wave.M.U.forEach(unitSlot =>
-                            maxTroops -= assignUnit(unitSlot, attackerMeleeTroops.length <= 0 ?
-                                attackerRangeTroops : attackerMeleeTroops, maxTroops))
+                            maxTroops -= assignUnit(unitSlot, attackerRangeTroops.length <= 0 ?
+                                attackerMeleeTroops : attackerRangeTroops, maxTroops))
                     }
                 })
 

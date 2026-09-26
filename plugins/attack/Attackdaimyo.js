@@ -137,23 +137,29 @@ events.once("load", async () => {
                 const maxTroopFront = getAmountSoldiersFront(level, commanderStats.attackUnitAmountFront)
                 const maxTroopFlank = getAmountSoldiersFlank(level, commanderStats.attackUnitAmountFlank)
 
-                attackInfo.A.forEach(wave => {
-                    const toolBudgetLR = Math.floor(maxToolsFlank / 2)
-                    wave.L.T.forEach((unitSlot, i) =>
-                        assignUnit(unitSlot, i == 0 ? wallTools : extraTools, toolBudgetLR))
+                attackInfo.A.forEach((wave, waveIndex) => {
+                    const useTools = waveIndex < 2
+
+                    if (useTools) {
+                        const toolBudgetLR = Math.floor(maxToolsFlank / 2)
+                        wave.L.T.forEach((unitSlot, i) =>
+                            assignUnit(unitSlot, i == 0 ? wallTools : extraTools, toolBudgetLR))
+                        wave.R.T.forEach((unitSlot, i) =>
+                            assignUnit(unitSlot, i == 0 ? wallTools : extraTools, toolBudgetLR))
+
+                        const toolBudgetM = Math.floor(maxToolsFront / 3)
+                        wave.M.T.forEach((unitSlot, i) =>
+                            assignUnit(unitSlot, i == 0 ? wallTools : i == 1 ? middleExtraTools : extraTools, toolBudgetM))
+                    }
+
                     let maxTroops = maxTroopFlank
                     wave.L.U.forEach(unitSlot =>
                         maxTroops -= assignUnit(unitSlot, flankTroops, maxTroops))
 
-                    wave.R.T.forEach((unitSlot, i) =>
-                        assignUnit(unitSlot, i == 0 ? wallTools : extraTools, toolBudgetLR))
                     maxTroops = maxTroopFlank
                     wave.R.U.forEach(unitSlot =>
                         maxTroops -= assignUnit(unitSlot, flankTroops, maxTroops))
 
-                    const toolBudgetM = Math.floor(maxToolsFront / 3)
-                    wave.M.T.forEach((unitSlot, i) =>
-                        assignUnit(unitSlot, i == 0 ? wallTools : i == 1 ? middleExtraTools : extraTools, toolBudgetM))
                     maxTroops = maxTroopFront
                     wave.M.U.forEach(unitSlot =>
                         maxTroops -= assignUnit(unitSlot, flankTroops, maxTroops))
