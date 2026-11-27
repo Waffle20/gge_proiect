@@ -29,8 +29,10 @@ const { botConfig, events, sendXT, waitForResult } = require("../ggeBot.js")
 const pluginOptions = botConfig.plugins[require("path").basename(__filename).slice(0, -3)] ?? {}
 
 // --- Editabil direct aici ---
-const TROOP_WODID = 10 // 2069 lvl archer10
-const MIN_TROOPS = 100 // prag fix, ignora ce e setat pe site
+const TROOP_WODID = 216 // 2069 lvl archer 10 oroare
+const TROOPS_PER_COMMANDER = 32 // trebuie sa fie egal cu UNIT_AMOUNT din attackBerimondFortresses
+const MIN_TROOPS = TROOPS_PER_COMMANDER * 2 // sub atat acasa trimitem trupe (ignora ce e setat pe site)
+const MIN_SEND = TROOPS_PER_COMMANDER // nu consumam un skip pe mai putin de un atac
 const CHECK_INTERVAL_MS = 30 * 1000 // la cat timp verifica stocul
 const SAFETY_BUFFER = 5 // marja suplimentara, ca sa nu lovim exact capacitatea maxima
 
@@ -46,14 +48,33 @@ const sendSkip = async skipType => {
     return result
 }
 
+// doar soldatii ocupa loc in tabara, uneltele (fara "role") nu
+const countSoldiers = unitList => Array.from(unitList ?? [])
+    .filter(u => u.unitInfo?.role)
+    .reduce((sum, u) => sum + u.amount, 0)
+
+let lastTransfer, lastTransferAt = 0
+// trupele aflate inca in transfer spre Berimond (daca skip-ul nu a terminat transferul)
+function troopsInTransfer(castle) {
+    const transfer = castle.troopTransfer
+    if (transfer !== lastTransfer) {
+        lastTransfer = transfer
+        lastTransferAt = Date.now()
+    }
+    // dupa ce expira timpul, trupele sunt deja numarate acasa
+    if (!transfer || !(Date.now() - lastTransferAt < transfer.remainingTime * 1000))
+        return 0
+    return countSoldiers(transfer.units)
+}
+
 const skipTroopTransfer = async () => {
     if (Number(pluginOptions.skipMode ?? 0) == 1) {
-        await sendSkip("MS4")
-        await sendSkip("MS4")
-        return
+        const first = await sendSkip("MS4")
+        const second = await sendSkip("MS4")
+        return first == 0 && second == 0
     }
 
-    await sendSkip("MS5")
+    return await sendSkip("MS5") == 0
 }
 
 // pozitia castelului din Berimond nu se schimba niciodata (confirmat manual) -
@@ -97,12 +118,12 @@ async function checkTroops() {
             return console.log(`[DEBUG-BERIMOND-RESUPPLY] castel lipsa - sursa=${!!sourceCastle} berimond=${!!berimondCastle}`)
 
         const beforeAmount = berimondCastle.unitInventory?.find(u => u.unitInfo.wodID == TROOP_WODID)?.amount ?? 0
-       // console.log(`[DEBUG-BERIMOND-RESUPPLY] inventar INAINTE de sincronizare (wodID ${TROOP_WODID}): ${beforeAmount}`)
-       // console.log(`[DEBUG-BERIMOND-RESUPPLY] tot inventarul INAINTE:`, JSON.stringify(berimondCastle.unitInventory?.map(u => [u.unitInfo.wodID, u.amount])))
+        // console.log(`[DEBUG-BERIMOND-RESUPPLY] inventar INAINTE de sincronizare (wodID ${TROOP_WODID}): ${beforeAmount}`)
+        // console.log(`[DEBUG-BERIMOND-RESUPPLY] tot inventarul INAINTE:`, JSON.stringify(berimondCastle.unitInventory?.map(u => [u.unitInfo.wodID, u.amount])))
 
         await setCastle(berimondCastle, async () => {
             const joinResult = await ClientCommands.joinCastle(berimondCastle.id, KingdomID.berimond)
-           // console.log(`[DEBUG-BERIMOND-RESUPPLY] joinCastle result: ${joinResult}`)
+            // console.log(`[DEBUG-BERIMOND-RESUPPLY] joinCastle result: ${joinResult}`)
             if (joinResult != 0)
                 console.warn(`[Berimond-Resupply] nu am putut re-sincroniza castelul din Berimond, cod ${joinResult} - folosesc date posibil vechi`)
         })
@@ -113,27 +134,43 @@ async function checkTroops() {
         const minTroops = MIN_TROOPS
         const maxCapacity = Number(pluginOptions.maxCapacity ?? 320)
 
-        console.log(`[DEBUG-BERIMOND-RESUPPLY] trupe curente la Berimond (wodID ${TROOP_WODID}): ${currentAmount}, prag minim: ${minTroops}, capacitate maxima: ${maxCapacity}`)
+        // locurile ocupate in tabara: soldatii de acasa + cei plecati la atac + cei in transfer
+        const home = countSoldiers(berimondCastle.unitInventory)
+        const inTransfer = troopsInTransfer(berimondCastle)
+        // fara TU in raspuns presupunem, ca inainte, ca toti comandantii sunt plecati cu armata intreaga
+        const traveling = berimondCastle.travelingUnits
+            ? countSoldiers(berimondCastle.travelingUnits)
+            : Number(pluginOptions.commanderCount ?? 5) * TROOPS_PER_COMMANDER
+        const resupplyAmount = Math.max(0, maxCapacity - home - traveling - inTransfer - SAFETY_BUFFER)
+
+        console.log(`[DEBUG-BERIMOND-RESUPPLY] wodID ${TROOP_WODID} acasa: ${currentAmount} (prag ${minTroops}) | soldati acasa: ${home}, ` +
+            `pe drum: ${traveling}${berimondCastle.travelingUnits ? "" : " (estimat, fara TU)"}, in transfer: ${inTransfer}, ` +
+            `capacitate: ${maxCapacity}, loc liber: ${resupplyAmount} | US=${berimondCastle.getProductionData?.maxUnitStorage}`)
 
         if (currentAmount >= minTroops)
             return
 
-        const resupplyAmount = Math.max(0, maxCapacity - currentAmount - (Number(pluginOptions.commanderCount ?? 5) * 32) - SAFETY_BUFFER)
-        const available = sourceCastle.unitInventory?.find(u => u.unitInfo.wodID == TROOP_WODID)?.amount ?? 0
+        const sourceTroops = sourceCastle.unitInventory?.find(u => u.unitInfo.wodID == TROOP_WODID)
+        const available = sourceTroops?.amount ?? 0
         const toSend = Math.min(resupplyAmount, available)
 
-        if (toSend <= 0)
-            return console.log(`[DEBUG-BERIMOND-RESUPPLY] nu am trupe wodID ${TROOP_WODID} disponibile in Great Empire`)
+        if (toSend < MIN_SEND)
+            return console.log(`[DEBUG-BERIMOND-RESUPPLY] nu trimit: loc liber ${resupplyAmount}, ` +
+                `disponibile in Great Empire ${available}, minim pe transfer ${MIN_SEND}`)
 
         const result = await ClientCommands.kingdomTroopTransfer(sourceCastle.id, KingdomID.greatEmpire, KingdomID.berimond, [[TROOP_WODID, toSend]])
 
         if (result != 0)
             return console.warn(`[Berimond-Resupply] trimitere esuata, cod ${result}`)
 
+        // inventarul din Great Empire nu se actualizeaza singur dupa transfer
+        sourceTroops.amount -= toSend
         console.log(`[Berimond-Resupply] trimise ${toSend} trupe (wodID ${TROOP_WODID}) spre Berimond`)
 
         try {
-            await skipTroopTransfer()
+            // transfer terminat: trupele apar acasa la urmatoarea sincronizare, nu le numaram de doua ori
+            if (await skipTroopTransfer())
+                berimondCastle.troopTransfer = undefined
         }
         catch (e) {
             console.debug(e)

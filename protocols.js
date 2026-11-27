@@ -1073,6 +1073,8 @@ async function clientJoinCastle(areaID, kingdomID) {
     Object.assign(castle, castleChanges)
     if (obj.gui?.I)
         castle.unitInventory = Array.from(obj.gui.I).map(Unit)
+    // trupele plecate din castel vin in gui, nu in grc
+    castle.travelingUnits = obj.gui?.TU ? Array.from(obj.gui.TU).map(Unit) : undefined
     return r
 }
 
