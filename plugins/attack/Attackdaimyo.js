@@ -50,22 +50,48 @@ const MIDDLE_EXTRA_TOOL_WODID = 648
 
 const FIXED_LEVEL = 100
 
-const skipTarget = async areaInfo => {
-    console.log(`[DEBUG-DAIMYO] skip check - extraData[2]: ${areaInfo.extraData[2]}`)
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-    while (areaInfo.extraData[2] > 0) {
-        let skip = spendSkip(areaInfo.extraData[2])
+const fetchTarget = async (x, y) => {
+    // useCache = false: cache-ul de 60s din getAreaInfo poate intoarce un cooldown vechi
+    const areaInfo = (await ClientCommands.getAreaInfo(kingdomID, x - 5, y - 5, x + 5, y + 5, false))
+        .areaInfo?.find(ai => ai.type == type && ai.x == x && ai.y == y)
+
+    if (!areaInfo)
+        throw new Error(`Daimyo target not found at ${x}:${y}`)
+
+    return areaInfo
+}
+
+// Skip-uieste cooldown-ul si confirma cu un gaa PROASPAT ca a ajuns la 0,
+// in loc sa ne bazam pe raspunsul msd / pe obiectul din cache.
+const skipTarget = async (x, y) => {
+    let areaInfo = await fetchTarget(x, y)
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const remaining = Number(areaInfo.extraData[2])
+        console.log(`[DEBUG-DAIMYO] skip check - extraData[2]: ${remaining}`)
+
+        if (!(remaining > 0))
+            return areaInfo
+
+        const skip = spendSkip(remaining)
 
         if (skip == undefined)
             throw new Error("couldntFindSkip")
 
-        const { result } = await ClientCommands.skipTarget(type, areaInfo.x, areaInfo.y, kingdomID, skip)
-
-        console.log(`[DEBUG-DAIMYO] skip trimis - skip: ${JSON.stringify(skip)}, result: ${result}`)
+        const { result, areaInfo: skipped } = await ClientCommands.skipTarget(type, x, y, kingdomID, skip)
+        console.log(`[DEBUG-DAIMYO] skip trimis - skip: ${JSON.stringify(skip)}, result: ${result}, extraData[2] dupa skip: ${skipped?.extraData?.[2]}`)
 
         if (result != 0)
-            break
+            throw err[result] ?? new Error(`msd failed with result ${result}`)
+
+        // lasam serverul sa aplice skip-ul, apoi recitim starea reala
+        await sleep(1500)
+        areaInfo = await fetchTarget(x, y)
     }
+
+    throw new Error("Daimyo cooldown still active after 10 skips")
 }
 
 events.once("load", async () => {
@@ -94,14 +120,7 @@ events.once("load", async () => {
                 const TARGET_X = Number(pluginOptions.targetX)
                 const TARGET_Y = Number(pluginOptions.targetY)
 
-                const areaInfo = (await ClientCommands.getAreaInfo(kingdomID,
-                    TARGET_X - 5, TARGET_Y - 5, TARGET_X + 5, TARGET_Y + 5))
-                    .areaInfo.find(ai => ai.type == type && ai.x == TARGET_X && ai.y == TARGET_Y)
-
-                if (!areaInfo)
-                    throw new Error(`Daimyo target not found at ${TARGET_X}:${TARGET_Y}`)
-
-                await skipTarget(areaInfo)
+                const areaInfo = await skipTarget(TARGET_X, TARGET_Y)
 
                 await sendXT("adi", JSON.stringify({ SX: castle.areaInfo.x, SY: castle.areaInfo.y, TX: TARGET_X, TY: TARGET_Y, KID: kingdomID }))
                 const [, adiResult] = await waitForResult("adi", 1000 * 10, () => true)
@@ -217,6 +236,10 @@ events.once("load", async () => {
                     await new Promise(r => setTimeout(r, 5000 + Math.random() * 1000))
                     break
                 case "COOLING_DOWN":
+                    // nu reincercam instant (inainte era bucla stransa cra -> COOLING_DOWN)
+                    console.warn("[Daimyo] COOLING_DOWN la cra, reincerc in 3s")
+                    await new Promise(r => setTimeout(r, 3000))
+                    break
                 case "TIMED_OUT":
                 case "MISSING_UNITS":
                 case "CANT_START_NEW_ARMIES":

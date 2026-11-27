@@ -11,8 +11,8 @@ const {
 } = require("../protocols.js")
 const { events } = require("../ggeBot.js")
 
-const hoursLeftTillRefilMandatory = 3.1 //was 2.1
-const hoursLeftTillRefilWarning = 4.1
+const hoursLeftTillRefilMandatory =  1.1//was 2.1
+const hoursLeftTillRefilWarning = 2.1
 const sendResTimeout = 29 * 30 * 1000
 const kingdomID = KingdomID.stormIslands
 

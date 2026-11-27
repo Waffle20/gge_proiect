@@ -4,7 +4,7 @@ if (require("node:worker_threads").isMainThread)
 const pretty = require("pretty-time")
 
 const { spendSkip, haveEnoughSkips } = require("../skips.js")
-const { castles, ClientCommands, AreaType, KingdomID, movements, movementEvents, resources } = require("../../protocols")
+const { castles, ClientCommands, AreaType, KingdomID, movements, movementEvents, resources, spiralCoordinates } = require("../../protocols")
 const {
     waitToAttack,
     getAttackInfo,
@@ -18,6 +18,10 @@ const { sendXT, waitForResult, botConfig, playerInfo } = require("../../ggeBot.j
 const err = require("../../err.json")
 const minTroopCount = 80
 const troopBlackList = [277]
+const mapSize = 1286
+// cate tile-uri de 100x100 (+-50 fata de castel, limita sigura per request "gaa") sa scaneze in spirala in jurul castelului
+// 1 = zona veche (doar tile-ul castelului), 9 = grid 3x3 in jur (zona totala ~300x300)
+const areaScanTiles = 9
 
 try {
     var { recruitTroops } = require("../../plugins-extra/externalEventHelper.js")
@@ -35,12 +39,30 @@ async function barronHit(type, kingdomID, options, maxLevel) {
 
     do {
         try {
-            var areas = (await ClientCommands.getAreaInfo(kingdomID,
-                castle.areaInfo.x - 50, castle.areaInfo.y - 50,
-                castle.areaInfo.x + 50, castle.areaInfo.y + 50))
-                .areaInfo.filter(ai => ai.type == type).sort((a, b) =>
-                    (Math.pow(castle.areaInfo.x - a.x, 2) + Math.pow(castle.areaInfo.y - a.y, 2)) -
-                    (Math.pow(castle.areaInfo.x - b.x, 2) + Math.pow(castle.areaInfo.y - b.y, 2)))
+            const foundAreas = new Map()
+
+            for (let tile = 0; tile < areaScanTiles; tile++) {
+                const { x: offsetX, y: offsetY } = spiralCoordinates(tile)
+                const baseX = castle.areaInfo.x + offsetX * 100
+                const baseY = castle.areaInfo.y + offsetY * 100
+
+                if (baseX <= -50 || baseY <= -50 || baseX >= (mapSize + 50) || baseY >= (mapSize + 50))
+                    continue
+
+                const fromX = Math.max(0, Math.min(mapSize, baseX - 50))
+                const fromY = Math.max(0, Math.min(mapSize, baseY - 50))
+                const toX = Math.max(0, Math.min(mapSize, baseX + 50))
+                const toY = Math.max(0, Math.min(mapSize, baseY + 50))
+
+                const { areaInfo } = await ClientCommands.getAreaInfo(kingdomID, fromX, fromY, toX, toY)
+                for (const ai of areaInfo)
+                    if (ai.type == type)
+                        foundAreas.set(`${ai.x}_${ai.y}`, ai)
+            }
+
+            var areas = [...foundAreas.values()].sort((a, b) =>
+                (Math.pow(castle.areaInfo.x - a.x, 2) + Math.pow(castle.areaInfo.y - a.y, 2)) -
+                (Math.pow(castle.areaInfo.x - b.x, 2) + Math.pow(castle.areaInfo.y - b.y, 2)))
             break
         } catch (e) {
             console.warn(e)
